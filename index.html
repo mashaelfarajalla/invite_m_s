@@ -1014,23 +1014,6 @@
         display: inline-block;
         font-variant-numeric: tabular-nums;
       }
-      .cd-num.bump {
-        animation: cd-bump 0.45s ease;
-      }
-      @keyframes cd-bump {
-        0% {
-          transform: translateY(-8px) scale(0.85);
-          opacity: 0;
-          color: var(--gold-600);
-        }
-        60% {
-          transform: translateY(1px) scale(1.04);
-          opacity: 1;
-        }
-        100% {
-          transform: translateY(0) scale(1);
-        }
-      }
       .cd-label {
         font-size: 11px;
         color: var(--ink-3);
@@ -2641,12 +2624,20 @@
         minutes: countdownEl.querySelector('[data-unit="minutes"]'),
         seconds: countdownEl.querySelector('[data-unit="seconds"]'),
       };
+      // الحركة عبر Web Animations: بلا قراءة offsetWidth (تسبب forced reflow) وبلا تحريك اللون
+      var bumpFrames = [
+        { transform: "translateY(-8px) scale(0.85)", opacity: 0 },
+        { transform: "translateY(1px) scale(1.04)", opacity: 1, offset: 0.6 },
+        { transform: "none", opacity: 1 },
+      ];
+      var reduceMotion =
+        window.matchMedia &&
+        matchMedia("(prefers-reduced-motion: reduce)").matches;
       function setUnit(el, text) {
         if (el.textContent === text) return;
         el.textContent = text;
-        el.classList.remove("bump");
-        void el.offsetWidth; // إعادة تشغيل الحركة
-        el.classList.add("bump");
+        if (el.animate && !reduceMotion && !document.hidden)
+          el.animate(bumpFrames, { duration: 450, easing: "ease" });
       }
       function tick() {
         var diff = weddingDate - new Date();
@@ -2957,7 +2948,6 @@
           items.forEach(function (item) {
             track.appendChild(makeCard(item));
           });
-          track.scrollLeft = 0;
           buildDots();
         }
 
