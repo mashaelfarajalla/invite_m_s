@@ -1804,6 +1804,11 @@
           >
             <circle cx="9" cy="14" r="6" />
             <circle cx="15" cy="14" r="6" />
+            <path
+              d="M13.3 3.6h3.4l1.2 1.4L15 8 12.1 5zM12.1 5h5.8"
+              stroke-width="1"
+              stroke-linejoin="round"
+            />
           </svg>
 
           <div class="arch-frame">
@@ -1901,7 +1906,7 @@
           ورحمة"
         </p>
         <p class="verse-body">
-          نحمد الله الذي جمعنا وأنتم على نعمته، ويسعدنا دعوتكم لحضور حفل زفافنا
+          نحمد الله الذي جمعنا وأتمّ علينا نعمته، ويسعدنا دعوتكم لحضور حفل زفافنا
           ومشاركتنا فرحتنا
         </p>
       </section>
@@ -2497,7 +2502,7 @@
         mapIo.observe(mapFrame);
       })();
 
-      // الموسيقى: تبدأ مع أول لمسة على الصفحة (المتصفحات تمنع التشغيل التلقائي)
+      // الموسيقى: تحاول التشغيل تلقائياً، وإلا تبدأ مع أول لمسة على الصفحة
       // زر الموسيقى الوحيد موجود في القائمة الجانبية
       var musicBtn = document.getElementById("snMusic");
       // لا يُحمَّل ملف الموسيقى (عدة ميغابايت) إلا عند أول تشغيل
@@ -2559,17 +2564,33 @@
           playing ? "إيقاف الموسيقى" : "تشغيل الموسيقى",
         );
       }
+      // الأيقونة تتبع حالة الصوت الفعلية، لا مجرد نجاح طلب التشغيل
+      music.addEventListener("playing", function () {
+        setMusicUI(true);
+      });
+      music.addEventListener("pause", function () {
+        setMusicUI(false);
+      });
       function playMusic() {
         clearInterval(fadeTimer);
         if (!music.src) music.src = CONFIG.musicUrl;
+        music.muted = false;
         music.volume = 0;
         return music.play().then(function () {
-          setMusicUI(true);
           // رفع الصوت تدريجياً
           fadeTimer = setInterval(function () {
             music.volume = Math.min(CONFIG.musicVolume, music.volume + 0.05);
             if (music.volume >= CONFIG.musicVolume) clearInterval(fadeTimer);
           }, 120);
+          // تحقق أن المقطع يتقدّم فعلاً، وإلا نعتبره متوقفاً
+          var t0 = music.currentTime;
+          return new Promise(function (resolve, reject) {
+            setTimeout(function () {
+              if (!music.paused && music.currentTime > t0) return resolve();
+              pauseMusic();
+              reject(new Error("stalled"));
+            }, 1500);
+          });
         });
       }
       function pauseMusic() {
@@ -2594,13 +2615,37 @@
         }
       });
 
-      function startOnFirstTouch(e) {
+      // محاولة التشغيل التلقائي فور فتح الصفحة، وإن منعها المتصفح
+      // تبدأ مع أول تفاعل (لمسة، نقرة، أو زر) وتُعاد المحاولة حتى تنجح
+      var gestureEvents = ["pointerdown", "pointerup", "touchend", "click", "keydown"];
+      function stopListening() {
+        gestureEvents.forEach(function (ev) {
+          document.removeEventListener(ev, startOnGesture, true);
+        });
+      }
+      function startOnGesture(e) {
         // الضغط على زر الموسيقى نفسه يتولاه حدث النقر
         if (musicBtn.contains(e.target)) return;
-        document.removeEventListener("pointerdown", startOnFirstTouch);
-        if (!userPaused && music.paused) playMusic().catch(function () {});
+        if (userPaused) return stopListening();
+        // أول تفاعل يعيد طلب التشغيل حتى لو بدا أن التشغيل التلقائي نجح،
+        // لأن بعض المتصفحات تسمح به لكن بلا صوت حتى يلمس الزائر الصفحة
+        stopListening();
+        if (!music.paused) {
+          music.muted = false;
+          music.play().catch(function () {});
+          return;
+        }
+        playMusic().catch(listenForGesture);
       }
-      document.addEventListener("pointerdown", startOnFirstTouch);
+      // لم ينجح التشغيل بعد: انتظر تفاعلاً (آخر) من الزائر
+      function listenForGesture() {
+        if (userPaused) return;
+        gestureEvents.forEach(function (ev) {
+          document.addEventListener(ev, startOnGesture, true);
+        });
+      }
+      listenForGesture();
+      playMusic().catch(listenForGesture);
 
       // إيقاف مؤقت عند مغادرة الصفحة، واستئناف عند العودة
       document.addEventListener("visibilitychange", function () {
